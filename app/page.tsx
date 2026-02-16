@@ -92,7 +92,7 @@ export default function Home() {
     api: apiEndpoint,
     schema,
     onError: (error) => {
-      console.error('Error submitting request:', error)
+      console.error('[Debug] onError:', error.message)
       if (error.message.includes('limit')) {
         setIsRateLimited(true)
       }
@@ -100,9 +100,13 @@ export default function Home() {
       setErrorMessage(error.message)
     },
     onFinish: async ({ object: fragment, error }) => {
+      console.log('[Debug] onFinish:', {
+        error: error?.message || null,
+        hasCode: !!fragment?.code,
+        codeLength: fragment?.code?.length,
+        filePath: fragment?.file_path,
+      })
       if (!error) {
-        // send it to /api/sandbox
-        console.log('fragment', fragment)
         setIsPreviewLoading(true)
         posthog.capture('fragment_generated', {
           template: fragment?.template,
@@ -133,6 +137,12 @@ export default function Home() {
 
   useEffect(() => {
     if (object) {
+      console.log('[Debug] Streaming object:', {
+        hasCode: !!object.code,
+        codeLength: object.code?.length,
+        filePath: object.file_path,
+        template: object.template,
+      })
       setFragment(object)
       const content: Message['content'] = [
         { type: 'text', text: object.commentary || '' },
