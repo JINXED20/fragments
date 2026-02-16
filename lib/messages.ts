@@ -17,6 +17,14 @@ export type MessageImage = {
   image: string
 }
 
+export type CodeSelection = {
+  code: string
+  fileName: string
+  startLine: number
+  endLine: number
+  precedingLine: string
+}
+
 export type Message = {
   role: 'assistant' | 'user'
   content: Array<MessageText | MessageCode | MessageImage>

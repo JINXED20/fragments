@@ -9,7 +9,7 @@ import { ChatSettings } from '@/components/chat-settings'
 import { NavBar } from '@/components/navbar'
 import { Preview } from '@/components/preview'
 import { useAuth } from '@/lib/auth'
-import { Message, toAISDKMessages, toMessageImage } from '@/lib/messages'
+import { CodeSelection, Message, toAISDKMessages, toMessageImage } from '@/lib/messages'
 import { LLMModelConfig } from '@/lib/models'
 import modelsList from '@/lib/models.json'
 import { FragmentSchema, fragmentSchema as schema } from '@/lib/schema'
@@ -23,7 +23,7 @@ import { SetStateAction, useEffect, useState } from 'react'
 import { useLocalStorage } from 'usehooks-ts'
 
 export default function Home() {
-  const [chatInput, setChatInput] = useLocalStorage('chat', '')
+  const [chatInput, setChatInput] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState<string>(
     'auto',
@@ -33,13 +33,14 @@ export default function Home() {
     {
       model: 'claude-sonnet-4-20250514',
     },
+    { initializeWithValue: false },
   )
 
   const posthog = usePostHog()
 
   const [result, setResult] = useState<ExecutionResult>()
   const [messages, setMessages] = useState<Message[]>([])
-  const [fragment, setFragment] = useState<DeepPartial<FragmentSchema>>()
+  const [fragment, setFragment] = useState<DeepPartial<FragmentSchema> | undefined>(undefined)
   const [currentTab, setCurrentTab] = useState<'code' | 'fragment'>('code')
   const [isPreviewLoading, setIsPreviewLoading] = useState(false)
   const [isAuthDialogOpen, setAuthDialog] = useState(false)
@@ -50,7 +51,10 @@ export default function Home() {
   const [useMorphApply, setUseMorphApply] = useLocalStorage(
     'useMorphApply',
     process.env.NEXT_PUBLIC_USE_MORPH_APPLY === 'true',
+    { initializeWithValue: false },
   )
+  const [codeSelections, setCodeSelections] = useState<CodeSelection[]>([])
+  const [scrollToSelection, setScrollToSelection] = useState<CodeSelection | null>(null)
 
   const filteredModels = modelsList.models.filter((model) => {
     if (process.env.NEXT_PUBLIC_HIDE_LOCAL_MODELS) {
@@ -156,6 +160,11 @@ export default function Home() {
     if (error) stop()
   }, [error])
 
+  // Clear stale selections when code regenerates (line numbers become invalid)
+  useEffect(() => {
+    setCodeSelections((prev) => (prev.length > 0 ? [] : prev))
+  }, [fragment?.code])
+
   function setMessage(message: Partial<Message>, index?: number) {
     setMessages((previousMessages) => {
       const updatedMessages = [...previousMessages]
@@ -180,6 +189,14 @@ export default function Home() {
     }
 
     const content: Message['content'] = [{ type: 'text', text: chatInput }]
+
+    if (codeSelections.length > 0) {
+      for (const sel of codeSelections) {
+        const referenceText = `[Referring to lines ${sel.startLine}-${sel.endLine} of ${sel.fileName}${sel.precedingLine ? `, after "${sel.precedingLine}"` : ''}]`
+        content.push({ type: 'text', text: referenceText })
+      }
+    }
+
     const images = await toMessageImage(files)
 
     if (images.length > 0) {
@@ -205,6 +222,7 @@ export default function Home() {
 
     setChatInput('')
     setFiles([])
+    setCodeSelections([])
     setCurrentTab('code')
 
     posthog.capture('chat_submit', {
@@ -228,6 +246,23 @@ export default function Home() {
   function addMessage(message: Message) {
     setMessages((previousMessages) => [...previousMessages, message])
     return [...messages, message]
+  }
+
+  function handleAttachCode(selection: CodeSelection) {
+    setCodeSelections((prev) => {
+      const isDuplicate = prev.some(
+        (s) =>
+          s.fileName === selection.fileName &&
+          s.startLine === selection.startLine &&
+          s.endLine === selection.endLine,
+      )
+      if (isDuplicate) return prev
+      return [...prev, selection]
+    })
+  }
+
+  function handleRemoveCodeSelection(index: number) {
+    setCodeSelections((prev) => prev.filter((_, i) => i !== index))
   }
 
   function handleSaveInputChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -269,6 +304,7 @@ export default function Home() {
     setResult(undefined)
     setCurrentTab('code')
     setIsPreviewLoading(false)
+    setCodeSelections([])
   }
 
   function setCurrentPreview(preview: {
@@ -282,6 +318,7 @@ export default function Home() {
   function handleUndo() {
     setMessages((previousMessages) => [...previousMessages.slice(0, -2)])
     setCurrentPreview({ fragment: undefined, result: undefined })
+    setCodeSelections([])
   }
 
   return (
@@ -326,6 +363,9 @@ export default function Home() {
             isMultiModal={currentModel?.multiModal || false}
             files={files}
             handleFileChange={handleFileChange}
+            codeSelections={codeSelections}
+            onRemoveCodeSelection={handleRemoveCodeSelection}
+            onHoverCodeSelection={setScrollToSelection}
           >
             <ChatPicker
               templates={templates}
@@ -355,6 +395,9 @@ export default function Home() {
           fragment={fragment}
           result={result as ExecutionResult}
           onClose={() => setFragment(undefined)}
+          onAttachCode={handleAttachCode}
+          codeSelections={codeSelections}
+          scrollToSelection={scrollToSelection}
         />
       </div>
     </main>

@@ -8,8 +8,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { CodeSelection } from '@/lib/messages'
 import { isFileInArray } from '@/lib/utils'
-import { ArrowUp, Paperclip, Square, X } from 'lucide-react'
+import { ArrowUp, Code, Paperclip, Square, X } from 'lucide-react'
 import { SetStateAction, useEffect, useMemo, useState } from 'react'
 import TextareaAutosize from 'react-textarea-autosize'
 
@@ -26,6 +27,9 @@ export function ChatInput({
   isMultiModal,
   files,
   handleFileChange,
+  codeSelections,
+  onRemoveCodeSelection,
+  onHoverCodeSelection,
   children,
 }: {
   retry: () => void
@@ -40,6 +44,9 @@ export function ChatInput({
   isMultiModal: boolean
   files: File[]
   handleFileChange: (change: SetStateAction<File[]>) => void
+  codeSelections: CodeSelection[]
+  onRemoveCodeSelection: (index: number) => void
+  onHoverCodeSelection: (selection: CodeSelection | null) => void
   children: React.ReactNode
 }) {
   function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
@@ -125,6 +132,51 @@ export function ChatInput({
       )
     })
   }, [files])
+
+  const codeSelectionsPreview = useMemo(() => {
+    if (codeSelections.length === 0) return null
+
+    return codeSelections.map((sel, index) => {
+      const codePreview =
+        sel.code.length > 200
+          ? sel.code.substring(0, 200) + '...'
+          : sel.code
+
+      return (
+        <div
+          key={`${sel.fileName}-${sel.startLine}-${sel.endLine}`}
+          className="relative group"
+          onMouseEnter={() => onHoverCodeSelection(sel)}
+          onMouseLeave={() => onHoverCodeSelection(null)}
+        >
+          <span
+            onClick={() => onRemoveCodeSelection(index)}
+            className="absolute top-[-8px] right-[-8px] bg-muted rounded-full p-1 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity z-10"
+          >
+            <X className="h-3 w-3" />
+          </span>
+          <TooltipProvider>
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border bg-muted/50 text-xs text-muted-foreground max-w-[200px] cursor-default">
+                  <Code className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{sel.fileName}</span>
+                  <span className="shrink-0 text-muted-foreground/60">
+                    L{sel.startLine}-{sel.endLine}
+                  </span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[400px]">
+                <pre className="text-xs whitespace-pre-wrap font-mono">
+                  {codePreview}
+                </pre>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      )
+    })
+  }, [codeSelections, onRemoveCodeSelection, onHoverCodeSelection])
 
   function onEnter(e: React.KeyboardEvent<HTMLFormElement>) {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -225,6 +277,7 @@ export function ChatInput({
                   <TooltipContent>Add attachments</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
+              {codeSelectionsPreview}
               {files.length > 0 && filePreview}
             </div>
             <div>
